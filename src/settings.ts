@@ -431,6 +431,117 @@ export class SettingsTab extends PluginSettingTab {
 			});
 	}
 
+	setup_llm() {
+		const plugin = (this as any).plugin
+		let {containerEl} = this
+
+		containerEl.createEl('h2', {text: 'LLM (AI) Settings'})
+		containerEl.createEl('p', {text: 'Configure AI-powered flashcard generation'})
+
+		// Enable LLM toggle
+		new Setting(containerEl)
+			.setName('Enable LLM Features')
+			.setDesc('Enable AI-powered card generation and answer generation')
+			.addToggle(toggle => toggle
+				.setValue(plugin.settings.LLM?.enabled || false)
+				.onChange(async (value) => {
+					if (!plugin.settings.LLM) {
+						plugin.settings.LLM = {
+							enabled: value,
+							providers: [],
+							defaultProvider: '',
+							fallbackChain: [],
+							autoGenerate: false,
+							autoGenerateAnswers: false,
+							showPreview: true,
+							batchSize: 10,
+							temperature: 0.7,
+							maxTokens: 2000,
+							timeout: 60
+						};
+					} else {
+						plugin.settings.LLM.enabled = value;
+					}
+					await plugin.saveAllData();
+					if (value) {
+						await plugin.initializeLLM();
+					}
+					this.display();
+				})
+			);
+
+		if (plugin.settings.LLM?.enabled) {
+			// Show LLM configuration section
+			containerEl.createEl('h3', {text: 'Quick Start'});
+			containerEl.createEl('p', {text: 'For detailed setup instructions, see LLM_GUIDE.md in the repository'});
+
+			// Temperature
+			new Setting(containerEl)
+				.setName('Temperature')
+				.setDesc('Creativity level (0-1). Lower = more focused, Higher = more creative')
+				.addSlider(slider => slider
+					.setLimits(0, 1, 0.1)
+					.setValue(plugin.settings.LLM?.temperature || 0.7)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						if (plugin.settings.LLM) {
+							plugin.settings.LLM.temperature = value;
+							await plugin.saveAllData();
+						}
+					})
+				);
+
+			// Max Tokens
+			new Setting(containerEl)
+				.setName('Max Tokens')
+				.setDesc('Maximum length of AI response')
+				.addText(text => text
+					.setValue(String(plugin.settings.LLM?.maxTokens || 2000))
+					.onChange(async (value) => {
+						const num = parseInt(value);
+						if (!isNaN(num) && num > 0 && plugin.settings.LLM) {
+							plugin.settings.LLM.maxTokens = num;
+							await plugin.saveAllData();
+						}
+					})
+				);
+
+			// Batch Size
+			new Setting(containerEl)
+				.setName('Batch Size')
+				.setDesc('Number of cards to generate at once')
+				.addText(text => text
+					.setValue(String(plugin.settings.LLM?.batchSize || 10))
+					.onChange(async (value) => {
+						const num = parseInt(value);
+						if (!isNaN(num) && num > 0 && plugin.settings.LLM) {
+							plugin.settings.LLM.batchSize = num;
+							await plugin.saveAllData();
+						}
+					})
+				);
+
+			// Show Preview
+			new Setting(containerEl)
+				.setName('Show Preview')
+				.setDesc('Show preview before adding AI-generated cards (Coming soon)')
+				.addToggle(toggle => toggle
+					.setValue(plugin.settings.LLM?.showPreview || true)
+					.onChange(async (value) => {
+						if (plugin.settings.LLM) {
+							plugin.settings.LLM.showPreview = value;
+							await plugin.saveAllData();
+						}
+					})
+				);
+
+			containerEl.createEl('p', {
+				text: 'Note: To configure LLM providers (Ollama, OpenRouter, etc.), you need to manually edit the plugin settings JSON or use the full settings UI (coming soon). See LLM_GUIDE.md for instructions.',
+				cls: 'mod-warning'
+			});
+		}
+	}
+
 	setup_display() {
 		let {containerEl} = this
 
@@ -443,6 +554,7 @@ export class SettingsTab extends PluginSettingTab {
 		this.setup_defaults()
 		this.setup_buttons()
 		this.setup_ignore_files()
+		this.setup_llm()
 	}
 
 	async display() {
