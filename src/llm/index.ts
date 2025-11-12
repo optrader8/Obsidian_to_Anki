@@ -7,6 +7,7 @@
 import { LLMRouter as _LLMRouter } from './llm-router';
 import { PromptManager as _PromptManager } from './prompt-manager';
 import { SmartCardGenerator as _SmartCardGenerator } from './card-generator';
+import { MultiPassCardGenerator as _MultiPassCardGenerator } from './generation/multi-pass-generator';
 import { OpenAICompatibleProvider as _OpenAICompatibleProvider } from './providers/openai-compatible-provider';
 
 // Core components
@@ -15,6 +16,16 @@ export { PromptManager } from './prompt-manager';
 export { ContentAnalyzer } from './content-analyzer';
 export { SmartCardGenerator } from './card-generator';
 export type { CardGenerationOptions } from './card-generator';
+
+// Enhanced generation
+export { MultiPassCardGenerator } from './generation/multi-pass-generator';
+export type { DocumentPlan, GenerationProgress, CardBatch } from './generation/multi-pass-generator';
+export { DocumentChunker } from './chunking/document-chunker';
+export type { DocumentChunk, ChunkingOptions } from './chunking/document-chunker';
+
+// UI Components
+export { CardPreviewModal } from './preview-modal';
+export { GenerationProgressModal } from './ui/progress-modal';
 
 // Providers
 export { OpenAICompatibleProvider } from './providers/openai-compatible-provider';
@@ -45,7 +56,11 @@ export { LLMError, LLMErrorType } from './llm-error';
  */
 export async function createLLMSystem(
 	llmSettings: any
-): Promise<{ router: _LLMRouter; generator: _SmartCardGenerator } | null> {
+): Promise<{
+	router: _LLMRouter;
+	generator: _SmartCardGenerator;
+	multiPassGenerator: _MultiPassCardGenerator;
+} | null> {
 	if (!llmSettings || !llmSettings.enabled) {
 		return null;
 	}
@@ -84,6 +99,7 @@ export async function createLLMSystem(
 	}
 
 	const generator = new _SmartCardGenerator(router, promptManager);
+	const multiPassGenerator = new _MultiPassCardGenerator(router, promptManager);
 
-	return { router, generator };
+	return { router, generator, multiPassGenerator };
 }

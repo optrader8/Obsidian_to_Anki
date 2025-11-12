@@ -1,6 +1,115 @@
 # LLM Integration Changelog
 
-## Version 4.0.0-alpha (Current Development)
+## Version 4.0.0-alpha.2 (Enhanced Document Processing)
+
+### 🚀 Major Enhancements
+
+#### Multi-Pass Card Generation System
+- **Smart Document Chunking**: Automatically breaks long documents into token-limited chunks (1500 max, 200 min tokens)
+- **Hierarchical Structure Preservation**: Maintains document structure by splitting on headings
+- **Importance Scoring**: Calculates importance scores based on heading level and content keywords
+- **Context-Aware Generation**: Each chunk receives global document context + local section context
+- **Progressive Generation**: Real-time progress updates with AsyncGenerator pattern
+
+#### Enhanced LLM Prompts
+- **Document Analysis Prompt**: Creates strategic plan before generation (overview, topics, estimated cards)
+- **Context-Rich Generation Prompt**: Includes document topic, section path, and previous summary
+- **Quality Validation Prompt**: Evaluates clarity, accuracy, completeness, and uniqueness
+- **Structured Output**: JSON-formatted responses with confidence scores and metadata
+
+#### New UI Components
+- **Generation Progress Modal**: Real-time visual feedback during long document processing
+  - Phase indicators (Planning → Analyzing → Generating → Validating → Completed)
+  - Progress bar with chunk completion
+  - Live card preview as they're generated
+  - Quality scores for each batch
+  - Cancel/pause functionality
+- **Enhanced Card Preview**: Integration with existing preview modal for final approval
+
+#### New Command
+- **"Generate Cards with AI (Enhanced for Long Documents)"**: Uses multi-pass system for optimal results on lengthy content
+
+### 📦 New Components
+
+#### Document Chunking
+- `src/llm/chunking/document-chunker.ts` (317 lines)
+  - Smart chunking with heading detection
+  - Token estimation (1 token ≈ 4 characters)
+  - Keyword extraction from emphasis and code blocks
+  - Context generation (overview, previous/next chunks)
+  - Configurable min/max token limits
+
+#### Multi-Pass Generation
+- `src/llm/generation/multi-pass-generator.ts` (482 lines)
+  - Pass 1: Document analysis and planning
+  - Pass 2: Intelligent chunking
+  - Pass 3: Context-aware card generation per chunk
+  - Pass 4: Quality validation (on-demand)
+  - AsyncGenerator for streaming results
+  - Batch quality scoring
+
+#### Progress UI
+- `src/llm/ui/progress-modal.ts` (274 lines)
+  - Real-time progress display
+  - Card batch preview with quality indicators
+  - Interactive cancel/continue controls
+  - Statistics dashboard
+  - Seamless integration with preview modal
+
+### 🎨 UI/UX Improvements
+- Progress bar with smooth animations
+- Quality indicators (high/medium/low) with color coding
+- Collapsible card previews showing first card of each batch
+- Real-time statistics (cards generated, sections processed, average confidence)
+- Professional phase icons and status messages
+
+### 📚 Documentation
+- `.docs/ENHANCEMENT_PLAN.md` - Complete enhancement strategy and implementation plan
+- Detailed comments in all new source files
+- Type definitions for all interfaces
+
+### 🔧 Technical Details
+
+#### Token Management
+- Configurable chunk sizes (default: 1500 max, 200 min)
+- Intelligent split points (paragraphs, sentences)
+- Token estimation algorithm
+- Overlap prevention
+
+#### Context Preservation
+- Global document overview
+- Section hierarchy tracking
+- Previous section summaries
+- Keyword extraction and propagation
+
+#### Quality Metrics
+- Per-card confidence scores
+- Batch quality aggregation
+- Count-based penalties (too few/many cards)
+- Validation scoring system (clarity, accuracy, completeness, uniqueness)
+
+#### Performance
+- AsyncGenerator for memory efficiency
+- Streaming results to UI
+- Cancellable operations
+- No blocking of main thread
+
+### ⚡ Performance Characteristics
+- Handles documents up to 100K+ tokens
+- Processes ~5-10 sections per minute (varies by LLM)
+- Memory-efficient streaming approach
+- Responsive UI during generation
+
+### 🔄 Integration with Existing Features
+- Fully backward compatible
+- Original "Generate Cards with AI" command unchanged
+- New enhanced command available alongside basic version
+- Shares same settings and provider configuration
+- Uses same card preview and approval workflow
+
+---
+
+## Version 4.0.0-alpha (Initial Release)
 
 ### 🎉 Major New Features
 

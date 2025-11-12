@@ -5,8 +5,9 @@ import { DEFAULT_IGNORED_FILE_GLOBS, SettingsTab } from './src/settings'
 import { ANKI_ICON } from './src/constants'
 import { settingToData } from './src/setting-to-data'
 import { FileManager } from './src/files-manager'
-import { createLLMSystem, LLMRouter, SmartCardGenerator } from './src/llm/index'
+import { createLLMSystem, LLMRouter, SmartCardGenerator, MultiPassCardGenerator, GenerationProgress, CardBatch } from './src/llm/index'
 import { CardPreviewModal } from './src/llm/preview-modal'
+import { GenerationProgressModal } from './src/llm/ui/progress-modal'
 
 export default class MyPlugin extends Plugin {
 
@@ -17,6 +18,7 @@ export default class MyPlugin extends Plugin {
 	file_hashes: Record<string, string>
 	llmRouter: LLMRouter | null
 	llmGenerator: SmartCardGenerator | null
+	llmMultiPassGenerator: MultiPassCardGenerator | null
 
 	async getDefaultSettings(): Promise<PluginSettings> {
 		let settings: PluginSettings = {
@@ -242,6 +244,7 @@ export default class MyPlugin extends Plugin {
 	async initializeLLM() {
 		this.llmRouter = null;
 		this.llmGenerator = null;
+		this.llmMultiPassGenerator = null;
 
 		if (!this.settings.LLM || !this.settings.LLM.enabled) {
 			console.log('LLM features are disabled');
@@ -253,6 +256,7 @@ export default class MyPlugin extends Plugin {
 			if (system) {
 				this.llmRouter = system.router;
 				this.llmGenerator = system.generator;
+				this.llmMultiPassGenerator = system.multiPassGenerator;
 				console.log('LLM system initialized successfully');
 				new Notice('LLM features enabled!');
 			}
@@ -383,6 +387,75 @@ export default class MyPlugin extends Plugin {
 		}
 	}
 
+	async generateCardsWithAIEnhanced() {
+		if (!this.llmMultiPassGenerator) {
+			new Notice('LLM is not enabled! Please enable it in settings.');
+			return;
+		}
+
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			new Notice('No active file!');
+			return;
+		}
+
+		try {
+			const content = await this.app.vault.read(activeFile);
+
+			// Create progress modal
+			const progressModal = new GenerationProgressModal(this.app, {
+				onComplete: async (cards) => {
+					// Show preview modal for final approval
+					if (this.settings.LLM?.showPreview) {
+						const previewModal = new CardPreviewModal(
+							this.app,
+							cards,
+							async (approvedCards) => {
+								await this.addCardsToAnki(approvedCards, activeFile);
+							}
+						);
+						previewModal.open();
+					} else {
+						// Add cards directly without preview
+						await this.addCardsToAnki(cards, activeFile);
+					}
+				},
+				onCancel: () => {
+					new Notice('Card generation cancelled.');
+				}
+			});
+
+			progressModal.open();
+
+			// Start multi-pass generation
+			const generator = this.llmMultiPassGenerator.generateCardsMultiPass(content, {
+				maxCards: this.settings.LLM?.batchSize || 50,
+				minQuality: 0.7
+			});
+
+			// Process the async generator
+			for await (const result of generator) {
+				// Check if user cancelled
+				if (progressModal.isCancelled()) {
+					break;
+				}
+
+				// Update progress or add card batch
+				if ('phase' in result) {
+					// It's a GenerationProgress
+					progressModal.updateProgress(result as GenerationProgress);
+				} else {
+					// It's a CardBatch
+					progressModal.addCardBatch(result as CardBatch);
+				}
+			}
+
+		} catch (error) {
+			console.error('Error generating cards:', error);
+			new Notice(`Error: ${error.message}`);
+		}
+	}
+
 	async onload() {
 		console.log('loading Obsidian_to_Anki...');
 		addIcon('anki', ANKI_ICON)
@@ -434,6 +507,14 @@ export default class MyPlugin extends Plugin {
 			name: 'Generate Cards with AI',
 			callback: async () => {
 				await this.generateCardsWithAI()
+			}
+		})
+
+		this.addCommand({
+			id: 'anki-generate-cards-ai-enhanced',
+			name: 'Generate Cards with AI (Enhanced for Long Documents)',
+			callback: async () => {
+				await this.generateCardsWithAIEnhanced()
 			}
 		})
 
