@@ -5,6 +5,8 @@ import { DEFAULT_IGNORED_FILE_GLOBS, SettingsTab } from './src/settings'
 import { ANKI_ICON } from './src/constants'
 import { settingToData } from './src/setting-to-data'
 import { FileManager } from './src/files-manager'
+import { createLLMSystem, LLMRouter, SmartCardGenerator } from './src/llm/index'
+import { CardPreviewModal } from './src/llm/preview-modal'
 
 export default class MyPlugin extends Plugin {
 
@@ -13,6 +15,8 @@ export default class MyPlugin extends Plugin {
 	fields_dict: Record<string, string[]>
 	added_media: string[]
 	file_hashes: Record<string, string>
+	llmRouter: LLMRouter | null
+	llmGenerator: SmartCardGenerator | null
 
 	async getDefaultSettings(): Promise<PluginSettings> {
 		let settings: PluginSettings = {
@@ -44,6 +48,19 @@ export default class MyPlugin extends Plugin {
 				"Add Obsidian Tags": false,
 			},
 			IGNORED_FILE_GLOBS: DEFAULT_IGNORED_FILE_GLOBS,
+			LLM: {
+				enabled: false,
+				providers: [],
+				defaultProvider: '',
+				fallbackChain: [],
+				autoGenerate: false,
+				autoGenerateAnswers: false,
+				showPreview: true,
+				batchSize: 10,
+				temperature: 0.7,
+				maxTokens: 2000,
+				timeout: 60
+			}
 		}
 		/*Making settings from scratch, so need note types*/
 		this.note_types = await AnkiConnect.invoke('modelNames') as Array<string>
@@ -210,7 +227,7 @@ export default class MyPlugin extends Plugin {
 		} else {
 			manager = new FileManager(this.app, data, this.app.vault.getMarkdownFiles(), this.file_hashes, this.added_media);
 		}
-		
+
 		await manager.initialiseFiles()
 		await manager.requests_1()
 		this.added_media = Array.from(manager.added_media_set)
@@ -220,6 +237,150 @@ export default class MyPlugin extends Plugin {
 		}
 		new Notice("All done! Saving file hashes and added media now...")
 		this.saveAllData()
+	}
+
+	async initializeLLM() {
+		this.llmRouter = null;
+		this.llmGenerator = null;
+
+		if (!this.settings.LLM || !this.settings.LLM.enabled) {
+			console.log('LLM features are disabled');
+			return;
+		}
+
+		try {
+			const system = await createLLMSystem(this.settings.LLM);
+			if (system) {
+				this.llmRouter = system.router;
+				this.llmGenerator = system.generator;
+				console.log('LLM system initialized successfully');
+				new Notice('LLM features enabled!');
+			}
+		} catch (error) {
+			console.error('Failed to initialize LLM system:', error);
+			new Notice('Warning: LLM initialization failed. Check console for details.');
+		}
+	}
+
+	async generateCardsWithAI() {
+		if (!this.llmGenerator) {
+			new Notice('LLM is not enabled! Please enable it in settings.');
+			return;
+		}
+
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			new Notice('No active file!');
+			return;
+		}
+
+		try {
+			new Notice('Generating cards with AI...');
+			const content = await this.app.vault.read(activeFile);
+
+			const cards = await this.llmGenerator.generateCards(content, {
+				useAnalyzer: true,
+				maxCards: this.settings.LLM?.batchSize || 10
+			});
+
+			if (cards.length === 0) {
+				new Notice('No cards generated. Try adjusting the content.');
+				return;
+			}
+
+			// Show preview modal
+			if (this.settings.LLM?.showPreview) {
+				const modal = new CardPreviewModal(
+					this.app,
+					cards,
+					async (approvedCards) => {
+						await this.addCardsToAnki(approvedCards, activeFile);
+					}
+				);
+				modal.open();
+			} else {
+				// Add cards directly without preview
+				await this.addCardsToAnki(cards, activeFile);
+			}
+
+		} catch (error) {
+			console.error('Error generating cards:', error);
+			new Notice(`Error: ${error.message}`);
+		}
+	}
+
+	async addCardsToAnki(cards: any[], file: TFile) {
+		// TODO: Convert GeneratedCard to AnkiConnect format and add to Anki
+		// For now, just show a success message
+		new Notice(`Adding ${cards.length} cards to Anki... (Not yet implemented)`);
+		console.log('Cards to add:', cards);
+
+		// This is where we would:
+		// 1. Convert GeneratedCard format to AnkiConnect note format
+		// 2. Call AnkiConnect.invoke('addNote', ...) for each card
+		// 3. Update file hashes and added media
+		// 4. Save data
+
+		// Placeholder implementation:
+		// const data: ParsedSettings = await settingToData(this.app, this.settings, this.fields_dict)
+		// for (const card of cards) {
+		//   await AnkiConnect.invoke('addNote', {
+		//     note: {
+		//       deckName: data.template.deckName,
+		//       modelName: 'Basic',
+		//       fields: {
+		//         Front: card.front,
+		//         Back: card.back
+		//       },
+		//       tags: card.tags || [this.settings.Defaults.Tag]
+		//     }
+		//   })
+		// }
+
+		new Notice(`Successfully added ${cards.length} cards!`);
+	}
+
+	async generateAnswerWithAI() {
+		if (!this.llmGenerator) {
+			new Notice('LLM is not enabled! Please enable it in settings.');
+			return;
+		}
+
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			new Notice('No active file!');
+			return;
+		}
+
+		try {
+			// Get selected text or use file content as context
+			const editor = this.app.workspace.activeEditor?.editor;
+			if (!editor) {
+				new Notice('No active editor!');
+				return;
+			}
+
+			const selection = editor.getSelection();
+			if (!selection) {
+				new Notice('Please select a question to generate an answer for!');
+				return;
+			}
+
+			new Notice('Generating answer with AI...');
+			const fileContent = await this.app.vault.read(activeFile);
+
+			const answer = await this.llmGenerator.generateAnswer(selection, fileContent);
+
+			// Insert answer below the question
+			const cursor = editor.getCursor();
+			editor.replaceRange(`\n\nAnswer: ${answer}`, cursor);
+
+			new Notice('Answer generated!');
+
+		} catch (error) {
+			console.error('Error generating answer:', error);
+			new Notice(`Error: ${error.message}`);
+		}
 	}
 
 	async onload() {
@@ -250,6 +411,9 @@ export default class MyPlugin extends Plugin {
 		this.added_media = await this.loadAddedMedia()
 		this.file_hashes = await this.loadFileHashes()
 
+		// Initialize LLM system if enabled
+		await this.initializeLLM()
+
 		this.addSettingTab(new SettingsTab(this.app, this));
 
 		this.addRibbonIcon('anki', 'Obsidian_to_Anki - Scan Vault', async () => {
@@ -262,6 +426,23 @@ export default class MyPlugin extends Plugin {
 			callback: async () => {
 			 	await this.scanVault()
 			 }
+		})
+
+		// LLM commands
+		this.addCommand({
+			id: 'anki-generate-cards-ai',
+			name: 'Generate Cards with AI',
+			callback: async () => {
+				await this.generateCardsWithAI()
+			}
+		})
+
+		this.addCommand({
+			id: 'anki-generate-answer-ai',
+			name: 'Generate Answer with AI',
+			callback: async () => {
+				await this.generateAnswerWithAI()
+			}
 		})
 	}
 
