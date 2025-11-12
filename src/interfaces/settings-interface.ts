@@ -1,6 +1,29 @@
 import { FIELDS_DICT } from './field-interface'
 import { AnkiConnectNote } from './note-interface'
 
+export interface LLMProviderConfig {
+	name: string;
+	type: 'openai' | 'ollama' | 'openrouter' | 'custom';
+	endpoint: string;
+	apiKey?: string;
+	model: string;
+	enabled: boolean;
+}
+
+export interface LLMSettings {
+	enabled: boolean;
+	providers: LLMProviderConfig[];
+	defaultProvider: string;
+	fallbackChain: string[];
+	autoGenerate: boolean;
+	autoGenerateAnswers: boolean;
+	showPreview: boolean;
+	batchSize: number;
+	temperature: number;
+	maxTokens: number;
+	timeout: number;
+}
+
 export interface PluginSettings {
 	CUSTOM_REGEXPS: Record<string, string>,
 	FILE_LINK_FIELDS: Record<string, string>,
@@ -30,6 +53,7 @@ export interface PluginSettings {
 		"Add Obsidian Tags": boolean
 	},
 	IGNORED_FILE_GLOBS:string[]
+	LLM?: LLMSettings
 }
 
 export interface FileData {
